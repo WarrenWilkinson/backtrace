@@ -1,0 +1,571 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+               "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<title>backtrace</title>
+<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1"/>
+<meta name="title" content="backtrace"/>
+<meta name="generator" content="Org-mode"/>
+<meta name="generated" content="2012-12-28T16:50-0700"/>
+<meta name="author" content="Warren Wilkinson"/>
+<meta name="description" content=""/>
+<meta name="keywords" content=""/>
+<style type="text/css">
+ <!--/*--><![CDATA[/*><!--*/
+  html { font-family: Times, serif; font-size: 12pt; }
+  .title  { text-align: center; }
+  .todo   { color: red; }
+  .done   { color: green; }
+  .tag    { background-color: #add8e6; font-weight:normal }
+  .target { }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .right  {margin-left:auto; margin-right:0px;  text-align:right;}
+  .left   {margin-left:0px;  margin-right:auto; text-align:left;}
+  .center {margin-left:auto; margin-right:auto; text-align:center;}
+  p.verse { margin-left: 3% }
+  pre {
+	border: 1pt solid #AEBDCC;
+	background-color: #F3F5F7;
+	padding: 5pt;
+	font-family: courier, monospace;
+        font-size: 90%;
+        overflow:auto;
+  }
+  table { border-collapse: collapse; }
+  td, th { vertical-align: top;  }
+  th.right  { text-align:center;  }
+  th.left   { text-align:center;   }
+  th.center { text-align:center; }
+  td.right  { text-align:right;  }
+  td.left   { text-align:left;   }
+  td.center { text-align:center; }
+  dt { font-weight: bold; }
+  div.figure { padding: 0.5em; }
+  div.figure p { text-align: center; }
+  div.inlinetask {
+    padding:10px;
+    border:2px solid gray;
+    margin:10px;
+    background: #ffffcc;
+  }
+  textarea { overflow-x: auto; }
+  .linenr { font-size:smaller }
+  .code-highlighted {background-color:#ffff00;}
+  .org-info-js_info-navigation { border-style:none; }
+  #org-info-js_console-label { font-size:10px; font-weight:bold;
+                               white-space:nowrap; }
+  .org-info-js_search-highlight {background-color:#ffff00; color:#000000;
+                                 font-weight:bold; }
+  /*]]>*/-->
+</style>
+<script type="text/javascript">
+/*
+@licstart  The following is the entire license notice for the
+JavaScript code in this tag.
+
+Copyright (C) 2012  Free Software Foundation, Inc.
+
+The JavaScript code in this tag is free software: you can
+redistribute it and/or modify it under the terms of the GNU
+General Public License (GNU GPL) as published by the Free Software
+Foundation, either version 3 of the License, or (at your option)
+any later version.  The code is distributed WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU GPL for more details.
+
+As additional permission under GNU GPL version 3 section 7, you
+may distribute non-source (e.g., minimized or compacted) forms of
+that code without the copy of the GNU GPL normally required by
+section 4, provided you include this license notice and a URL
+through which recipients can access the Corresponding Source.
+
+
+@licend  The above is the entire license notice
+for the JavaScript code in this tag.
+*/
+<!--/*--><![CDATA[/*><!--*/
+ function CodeHighlightOn(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(null != target) {
+     elem.cacheClassElem = elem.className;
+     elem.cacheClassTarget = target.className;
+     target.className = "code-highlighted";
+     elem.className   = "code-highlighted";
+   }
+ }
+ function CodeHighlightOff(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(elem.cacheClassElem)
+     elem.className = elem.cacheClassElem;
+   if(elem.cacheClassTarget)
+     target.className = elem.cacheClassTarget;
+ }
+/*]]>*///-->
+</script>
+
+</head>
+<body>
+
+<div id="preamble">
+
+</div>
+
+<div id="content">
+<h1 class="title">backtrace</h1>
+
+
+
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#sec-1">1 Overview</a>
+<ul>
+<li><a href="#sec-1-1">1.1 Features</a></li>
+<li><a href="#sec-1-2">1.2 Limitations</a></li>
+</ul>
+</li>
+<li><a href="#sec-2">2 Installation</a>
+<ul>
+<li><a href="#sec-2-1">2.1 Manual Installation</a></li>
+<li><a href="#sec-2-2">2.2 Running the Tests</a></li>
+<li><a href="#sec-2-3">2.3 Getting Support</a></li>
+</ul>
+</li>
+<li><a href="#sec-3">3 Implementation</a></li>
+<li><a href="#sec-4">4 Tests</a></li>
+<li><a href="#sec-5">5 License</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-1" class="outline-2">
+<h2 id="sec-1"><span class="section-number-2">1</span> Overview</h2>
+<div class="outline-text-2" id="text-1">
+
+
+<p>
+It would be nice if your webserver gave you a backtrace when it went "kaput". This library captures backtraces 
+so you can log or email them.
+</p>
+<p>
+It works by creating a 'backtrace' restart that prints to a stream. If there is a problem, you can log the backtrace.
+</p>
+
+
+
+<pre class="example">(defun main-or-thread-main (args)
+  (with-printable-backtrace (*logging*)
+     (do-something-important)))
+</pre>
+
+
+
+</div>
+
+<div id="outline-container-1-1" class="outline-3">
+<h3 id="sec-1-1"><span class="section-number-3">1.1</span> Features</h3>
+<div class="outline-text-3" id="text-1-1">
+
+
+<ul>
+<li>Shows files and file positions (when it can)
+</li>
+<li>Show local variables (use :variables t argument)
+</li>
+<li>Customizable depth (use :depth N argument)
+</li>
+</ul>
+
+
+</div>
+
+</div>
+
+<div id="outline-container-1-2" class="outline-3">
+<h3 id="sec-1-2"><span class="section-number-3">1.2</span> Limitations</h3>
+<div class="outline-text-3" id="text-1-2">
+
+
+<ul>
+<li><b>It only works on SBCL.</b>
+</li>
+<li>Invoking the restart is left to the end-user.  A simple example:
+
+
+
+
+<pre class="example">(handler-bind ((error-you-want-backtraces-for
+                #'(lambda (c) 
+                    (invoke-restart 'backtrace:backtrace)
+                    (error c))))
+  (with-printable-backtrace (*logging-stream* :depth 6 :variables t)
+    (do-something-important)))
+</pre>
+
+
+<p>
+    You might choose something more sophisticated, like logging for some users but sending developers
+    to the debugger.
+</p></li>
+<li>The restart is always 'backtrace:backtrace.  For now, you can't give them unique names.
+</li>
+</ul>
+
+
+</div>
+</div>
+
+</div>
+
+<div id="outline-container-2" class="outline-2">
+<h2 id="sec-2"><span class="section-number-2">2</span> Installation</h2>
+<div class="outline-text-2" id="text-2">
+
+
+</div>
+
+<div id="outline-container-2-1" class="outline-3">
+<h3 id="sec-2-1"><span class="section-number-3">2.1</span> Manual Installation</h3>
+<div class="outline-text-3" id="text-2-1">
+
+
+<p>
+In summary: Untar the <a href="https://github.com/WarrenWilkinson/changed-stream/archive/master.tar.gz">.tar</a> package and then symlink the .asd files into a place where ASDF can find them. 
+</p>
+<ol>
+<li>Untar the files where you want them to be.  On windows download the <a href="https://github.com/WarrenWilkinson/changed-stream/archive/master.zip">.zip</a> and unzip it instead, it's the same files.
+</li>
+<li>ASDF could be looking anywhere &ndash; it depends on your setup.  Run this in your lisp repl to get a clue
+     as to where ASDF is seeking libraries<sup><a class="footref" name="fnr-.1" href="#fn-.1">1</a></sup>:
+
+
+
+
+<pre class="example">(mapcan #'funcall asdf:*default-source-registries*)
+</pre>
+
+
+</li>
+<li>Symlink the .asd files to the source directory. If you use windows, <a href="http://bc.tech.coop/blog/041113.html">these instructions on symlink alternatives apply to you</a>.
+</li>
+</ol>
+
+
+<p>
+Once the files are in place, the package can be loaded with ASDF by:
+</p>
+
+
+<pre class="example">(asdf:operate 'asdf:load-op :backtrace)
+</pre>
+
+
+<p>
+If you have problems, see the <a href="#support">support</a> section.  If you don't have problems you may want to <a href="#runtests">run the tests</a> anyway, because you can.
+</p>
+</div>
+
+</div>
+
+<div id="outline-container-2-2" class="outline-3">
+<h3 id="sec-2-2"><span class="section-number-3">2.2</span> Running the Tests</h3>
+<div class="outline-text-3" id="text-2-2">
+
+
+<p>
+Once the system is loaded, it can be tested with asdf. 
+</p>
+
+
+
+<pre class="example">(asdf:operate 'asdf:test-op :backtrace)
+</pre>
+
+
+<p>
+This should display something like the following. There should
+be <b>zero failures</b>, if you have failures see the <a href="#support">support</a> section
+of this document.
+</p>
+
+
+
+<pre class="example">RUNNING BACKTRACE TESTS...
+BACKTRACE TEST RESULTS: 
+     Tests: 9
+   Success: 9
+  Failures: 0
+</pre>
+
+
+</div>
+
+</div>
+
+<div id="outline-container-2-3" class="outline-3">
+<h3 id="sec-2-3"><span class="section-number-3">2.3</span> Getting Support</h3>
+<div class="outline-text-3" id="text-2-3">
+
+
+<p>
+You can email <a href="mailto:warrenwilkinson@gmail.com">Warren Wilkinson (warrenwilkinson@gmail.com)</a>, or look at the <a href="https://github.com/WarrenWilkinson/backtrace">github (https://github.com/WarrenWilkinson/backtrace)</a> repository.
+</p>
+</div>
+</div>
+
+</div>
+
+<div id="outline-container-3" class="outline-2">
+<h2 id="sec-3"><span class="section-number-2">3</span> Implementation</h2>
+<div class="outline-text-2" id="text-3">
+
+
+<p>
+The macro "with-printable-backtrace" creates
+</p><ol>
+<li>A restart case that will print the backtrace
+</li>
+<li>A handler to grab the current backtrace.
+</li>
+</ol>
+
+
+<p>
+We need both parts; if the stack unwinds to invoke the restart then the backtrace is lost.  The handler
+grabs it before that can happen.
+</p>
+
+
+
+<pre class="example">(defmacro with-printable-backtrace ((&amp;optional stream &amp;key (depth 5) variables) &amp;body body)
+  (let ((backtrace (gensym)))
+    `(let ((,backtrace nil))
+       (restart-case 
+           (handler-bind
+               ((error (lambda (condition)
+                         (declare (ignore condition))
+                         (setf ,backtrace
+                               (nthcdr 3 
+                                 (loop for i from 0 upto (+ 2 ,depth)
+                                       for frame = (sb-di:top-frame) then (sb-di:frame-down frame)
+                                       collect frame)))
+                         nil)))
+             ,@body)
+         (backtrace ()
+           :report (lambda (r) (format r "Print ~a-level backtrace to ~a with~:[out~;~] variables"
+                               ,depth ',stream ,variables))
+           (print-backtrace ,stream ,variables ,backtrace)
+           nil)))))
+</pre>
+
+
+<p>
+There magic numbers (nthcdr 3 &hellip;) and (+ 2 depth) are to skip backtrace items related to
+fetching the backtrace. The handler returns nil to <i>decline</i> the error, meaning other handlers are free to attempt
+fixing it.
+</p>
+<p>
+All other functions support this macro, they interface low level SBCL routines. Many of them are derived from
+watching how Swank does it. 
+</p>
+
+
+
+<pre class="example">(defun call-signature (frame)
+  (with-output-to-string (a)
+    (sb-debug::print-frame-call frame a)))
+
+(defun print-variable (stream arg colonp atsignp)
+  (declare (ignore colonp atsignp))
+  (format stream "~a = ~a" (first arg) (second arg)))
+
+(defun print-backtrace (stream variables frames &amp;aux (i 0))
+  (dolist (frame frames)
+    (format stream "~%~d. ~a~%   - SOURCE: ~s~{~%    (with) ~/backtrace:print-variable/~}"
+            i
+            (call-signature frame)
+            (source-location frame)
+            (and variables (frame-variables frame)))
+    (incf i)))
+</pre>
+
+
+<p>
+Fetching the frame variables is tricky since they are complex objects. 
+</p>
+
+
+
+<pre class="example">(flet ((frame-vars (frame) ;; adapted from swank
+         (ignore-errors (sb-di::debug-fun-debug-vars (sb-di:frame-debug-fun frame))))
+       (debug-var-value (var frame location) ;; adapted from swank
+         (ecase (sb-di:debug-var-validity var location)
+           (:valid (sb-di:debug-var-value var frame))
+           ((:invalid :unknown) ':&lt;not-available&gt;))))
+  (defun frame-variables (frame) ;; adapted from swark
+    (let ((loc (sb-di:frame-code-location frame))
+          (vars (frame-vars frame)))
+      (when vars
+        (loop for v across vars collect
+             (list (sb-di:debug-var-symbol v) (debug-var-value v frame loc)))))))
+</pre>
+
+
+<p>
+Computing the line number is very difficult.  The compiler doesn't keep track of them.  Instead,
+it counts the top-level forms it sees, and we can get that.   The function file-line reads that many top-level-forms,
+and then counts the newlines in that space.
+</p>
+
+
+
+<pre class="example">(defun file-line (file top-level-form-number)
+  (with-open-file (s file)
+    (dotimes (i top-level-form-number (sb-impl::flush-whitespace s))
+      (read s))
+    (let* ((position (file-position s))
+           (upto-start (make-string position)))
+      (file-position s 0)
+      (read-sequence upto-start s)
+      (1+ (count #\Newline upto-start)))))
+</pre>
+
+
+<p>
+Producing a human-readable source-location is hard because so much can go wrong.  This function
+attempts to do so, with a focus on reliability. It doesn't try hard, but it works. 
+</p>
+
+
+
+<pre class="example">(defun source-location (frame)
+  (let* ((loc (sb-di:frame-code-location frame))
+         (dsource (sb-di:code-location-debug-source loc)))
+    (aif (sb-di:debug-source-namestring dsource)
+         (let ((truename (ignore-errors (truename it))))
+           (if truename
+               (concatenate 'string (namestring truename)
+                            "@" 
+                            (or (ignore-errors 
+                                  (princ-to-string
+                                   (file-line truename 
+                                              (sb-di::code-location-toplevel-form-offset 
+                                               (sb-debug::maybe-block-start-location loc)))))
+                                "?"))
+               it))
+         (or (ignore-errors (sb-debug::code-location-source-form loc 100))
+             "REPL, unknown location"))))
+</pre>
+
+
+</div>
+
+</div>
+
+<div id="outline-container-4" class="outline-2">
+<h2 id="sec-4"><span class="section-number-2">4</span> Tests</h2>
+<div class="outline-text-2" id="text-4">
+
+
+<p>
+Mosts tests are simple regexes on the output of running (alpha 4 5). These test functions are in their own file,
+test-functions.lisp, so they have known line numbers.
+</p>
+
+
+
+<pre class="example">(in-package :backtrace.test)
+(defvar *fail-p* t)
+(defun tertiary () ;; Line 4
+  (declare (optimize debug))
+  (if *fail-p* (error "In last") 4))
+
+(defun beta (a) ;; Line 8
+  (declare (optimize debug))
+  (* (tertiary) a))
+
+(defun alpha (a b) ;; Line 12
+  (declare (optimize debug))
+    (dotimes (i 4) 
+      (incf b (beta a))))
+</pre>
+
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+<colgroup><col class="left" /><col class="left" /><col class="right" /><col class="left" /><col class="left" />
+</colgroup>
+<thead>
+<tr><th scope="col" class="left"><b>test</b></th><th scope="col" class="left"><b>vars</b></th><th scope="col" class="right"><b>depth</b></th><th scope="col" class="left"><b>regex</b></th><th scope="col" class="left"><b>notes</b></th></tr>
+</thead>
+<tbody>
+<tr><td class="left">variables-off</td><td class="left">nil</td><td class="right">6</td><td class="left">!with</td><td class="left">When variables are disabled, we shouldn't see any.</td></tr>
+<tr><td class="left">variables-on</td><td class="left">t</td><td class="right">6</td><td class="left">with</td><td class="left">When enabled, we should see some.</td></tr>
+</tbody>
+<tbody>
+<tr><td class="left">tertiary-first</td><td class="left">nil</td><td class="right">1</td><td class="left">!BETA</td><td class="left">Tertiary should be first.</td></tr>
+<tr><td class="left">beta-second</td><td class="left">nil</td><td class="right">2</td><td class="left">!ALPHA</td><td class="left">Beta should be second</td></tr>
+<tr><td class="left">alpha-third</td><td class="left">nil</td><td class="right">3</td><td class="left">ALPHA</td><td class="left">Alpha should be last</td></tr>
+</tbody>
+<tbody>
+<tr><td class="left">tertiary-fp</td><td class="left">nil</td><td class="right">1</td><td class="left">test-functions.lisp@4</td><td class="left">Correct file location for tertiary</td></tr>
+<tr><td class="left">beta-fp</td><td class="left">nil</td><td class="right">2</td><td class="left">test-functions.lisp@8</td><td class="left">Correct file location for beta</td></tr>
+<tr><td class="left">alpha-fp</td><td class="left">nil</td><td class="right">3</td><td class="left">test-functions.lisp@12</td><td class="left">Correct file location for alpha</td></tr>
+</tbody>
+</table>
+
+
+<p>
+The only other test ensures that our restart is present. 
+</p>
+
+
+
+<pre class="example">(defun ensure-restart-exists-test ()
+  "Test that the backtrace restart is created."
+  (block nil
+    (handler-bind ((error (lambda (c) (declare (ignore c)) (return (find-restart 'backtrace)))))
+      (test-setup 5 nil))))
+(pushnew 'ensure-restart-exists-test *all-tests*)
+</pre>
+
+
+</div>
+
+</div>
+
+<div id="outline-container-5" class="outline-2">
+<h2 id="sec-5"><span class="section-number-2">5</span> License</h2>
+<div class="outline-text-2" id="text-5">
+
+
+<p>
+backtrace is distributed under the <a href="http://opensource.org/licenses/lgpl-2.1.php">LGPL2</a> License. 
+</p>
+<div id="footnotes">
+<h2 class="footnotes">Footnotes: </h2>
+<div id="text-footnotes">
+<p class="footnote"><sup><a class="footnum" name="fn-.1" href="#fnr-.1">1</a></sup> you might need to (require 'asdf) before running this example
+</p>
+
+
+</div>
+</div>
+
+</div>
+</div>
+</div>
+
+<div id="postamble">
+<p class="date">Date: 2012-12-28T16:50-0700</p>
+<p class="author">Author: Warren Wilkinson</p>
+<p class="creator"><a href="http://orgmode.org">Org</a> version 7.9.2 with <a href="http://www.gnu.org/software/emacs/">Emacs</a> version 24</p>
+<a href="http://validator.w3.org/check?uri=referer">Validate XHTML 1.0</a>
+
+</div>
+</body>
+</html>
