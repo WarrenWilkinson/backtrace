@@ -1,0 +1,474 @@
+#+TITLE: backtrace
+#+author: Warren Wilkinson
+#+email: warrenwilkinson@gmail.com
+#+LATEX_CLASS: tufte
+
+# Repository: https://github.com/WarrenWilkinson/backtrace
+
+* Overview
+
+It would be nice if your webserver gave you a backtrace when it went "kaput". This library captures backtraces 
+so you can log or email them.
+
+It works by creating a 'backtrace' restart that prints to a stream. If there is a problem, you can log the backtrace.
+
+#+begin_src lisp
+(defun main-or-thread-main (args)
+  (with-printable-backtrace (*logging*)
+     (do-something-important)))
+#+end_src
+
+** Features
+
+  * Shows files and file positions (when it can)
+  * Show local variables (use :variables t argument)
+  * Customizable depth (use :depth N argument)
+
+** Limitations
+
+  * *It only works on SBCL.*
+  * Invoking the restart is left to the end-user.  A simple example:
+
+    #+begin_src lisp
+      (handler-bind ((error-you-want-backtraces-for
+                      #'(lambda (c) 
+                          (invoke-restart 'backtrace:backtrace)
+                          (error c))))
+        (with-printable-backtrace (*logging-stream* :depth 6 :variables t)
+          (do-something-important)))
+    #+end_src
+
+    You might choose something more sophisticated, like logging for some users but sending developers
+    to the debugger.
+  * The restart is always 'backtrace:backtrace.  For now, you can't give them unique names.
+
+* Installation
+** Manual Installation
+
+In summary: Untar the [[https://github.com/WarrenWilkinson/changed-stream/archive/master.tar.gz][.tar]] package and then symlink the .asd files into a place where ASDF can find them. 
+
+  1. Untar the files where you want them to be.  On windows download the [[https://github.com/WarrenWilkinson/changed-stream/archive/master.zip][.zip]] and unzip it instead, it's the same files.
+  2. ASDF could be looking anywhere -- it depends on your setup.  Run this in your lisp repl to get a clue
+     as to where ASDF is seeking libraries[fn:: you might need to (require 'asdf) before running this example]:
+
+     #+BEGIN_SRC lisp
+        (mapcan #'funcall asdf:*default-source-registries*)
+     #+END_SRC
+
+  3. Symlink the .asd files to the source directory. If you use windows, [[http://bc.tech.coop/blog/041113.html][these instructions on symlink alternatives apply to you]].
+
+Once the files are in place, the package can be loaded with ASDF by:
+#+BEGIN_SRC lisp
+(asdf:operate 'asdf:load-op :backtrace)
+#+END_SRC
+
+If you have problems, see the [[#support][support]] section.  If you don't have problems you may want to [[#runtests][run the tests]] anyway, because you can.
+
+** Running the Tests
+   :PROPERTIES:
+   :CUSTOM-ID:  runtests
+   :END:
+
+Once the system is loaded, it can be tested with asdf. 
+
+#+BEGIN_SRC lisp
+(asdf:operate 'asdf:test-op :backtrace)
+#+END_SRC
+
+This should display something like the following. There should
+be *zero failures*, if you have failures see the [[#support][support]] section
+of this document.
+
+#+BEGIN_SRC sh
+   RUNNING BACKTRACE TESTS...
+   BACKTRACE TEST RESULTS: 
+        Tests: 9
+      Success: 9
+     Failures: 0
+#+END_SRC
+
+** Getting Support
+   :PROPERTIES:
+   :CUSTOM-ID:  support
+   :END:
+
+You can email [[mailto:warrenwilkinson@gmail.com][Warren Wilkinson (warrenwilkinson@gmail.com)]], or look at the [[https://github.com/WarrenWilkinson/backtrace][github (https://github.com/WarrenWilkinson/backtrace)]] repository.
+
+* Implementation
+
+The macro "with-printable-backtrace" creates
+   1. A restart case that will print the backtrace
+   2. A handler to grab the current backtrace.
+
+We need both parts; if the stack unwinds to invoke the restart then the backtrace is lost.  The handler
+grabs it before that can happen.
+
+#+NAME: with-printable-backtrace
+#+begin_src lisp
+  (defmacro with-printable-backtrace ((&optional stream &key (depth 5) variables) &body body)
+    (let ((backtrace (gensym)))
+      `(let ((,backtrace nil))
+         (restart-case 
+             (handler-bind
+                 ((error (lambda (condition)
+                           (declare (ignore condition))
+                           (setf ,backtrace
+                                 (nthcdr 3 
+                                   (loop for i from 0 upto (+ 2 ,depth)
+                                         for frame = (sb-di:top-frame) then (sb-di:frame-down frame)
+                                         collect frame)))
+                           nil)))
+               ,@body)
+           (backtrace ()
+             :report (lambda (r) (format r "Print ~a-level backtrace to ~a with~:[out~;~] variables"
+                                 ,depth ',stream ,variables))
+             (print-backtrace ,stream ,variables ,backtrace)
+             nil)))))
+#+end_src 
+
+There magic numbers (nthcdr 3 ...) and (+ 2 depth) are to skip backtrace items related to
+fetching the backtrace. The handler returns nil to /decline/ the error, meaning other handlers are free to attempt
+fixing it.
+
+All other functions support this macro, they interface low level SBCL routines. Many of them are derived from
+watching how Swank does it. 
+
+#+NAME: print-backtrace
+#+begin_src lisp
+(defun call-signature (frame)
+  (with-output-to-string (a)
+    (sb-debug::print-frame-call frame a)))
+
+(defun print-variable (stream arg colonp atsignp)
+  (declare (ignore colonp atsignp))
+  (format stream "~a = ~a" (first arg) (second arg)))
+
+(defun print-backtrace (stream variables frames &aux (i 0))
+  (dolist (frame frames)
+    (format stream "~%~d. ~a~%   - SOURCE: ~s~{~%    (with) ~/backtrace:print-variable/~}"
+	    i
+	    (call-signature frame)
+	    (source-location frame)
+	    (and variables (frame-variables frame)))
+    (incf i)))
+#+end_src 
+
+Fetching the frame variables is tricky since they are complex objects. 
+
+#+NAME: frame-variables
+#+begin_src lisp
+(flet ((frame-vars (frame) ;; adapted from swank
+	 (ignore-errors (sb-di::debug-fun-debug-vars (sb-di:frame-debug-fun frame))))
+       (debug-var-value (var frame location) ;; adapted from swank
+	 (ecase (sb-di:debug-var-validity var location)
+	   (:valid (sb-di:debug-var-value var frame))
+	   ((:invalid :unknown) ':<not-available>))))
+  (defun frame-variables (frame) ;; adapted from swark
+    (let ((loc (sb-di:frame-code-location frame))
+	  (vars (frame-vars frame)))
+      (when vars
+	(loop for v across vars collect
+	     (list (sb-di:debug-var-symbol v) (debug-var-value v frame loc)))))))
+#+end_src 
+
+Computing the line number is very difficult.  The compiler doesn't keep track of them.  Instead,
+it counts the top-level forms it sees, and we can get that.   The function file-line reads that many top-level-forms,
+and then counts the newlines in that space.
+
+#+NAME: file-line
+#+begin_src lisp
+(defun file-line (file top-level-form-number)
+  (with-open-file (s file)
+    (dotimes (i top-level-form-number (sb-impl::flush-whitespace s))
+      (read s))
+    (let* ((position (file-position s))
+	   (upto-start (make-string position)))
+      (file-position s 0)
+      (read-sequence upto-start s)
+      (1+ (count #\Newline upto-start)))))
+#+end_src
+
+Producing a human-readable source-location is hard because so much can go wrong.  This function
+attempts to do so, with a focus on reliability. It doesn't try hard, but it works. 
+
+#+NAME: source-location
+#+begin_src lisp
+(defun source-location (frame)
+  (let* ((loc (sb-di:frame-code-location frame))
+	 (dsource (sb-di:code-location-debug-source loc)))
+    (aif (sb-di:debug-source-namestring dsource)
+	 (let ((truename (ignore-errors (truename it))))
+	   (if truename
+	       (concatenate 'string (namestring truename)
+			    "@" 
+			    (or (ignore-errors 
+				  (princ-to-string
+				   (file-line truename 
+					      (sb-di::code-location-toplevel-form-offset 
+					       (sb-debug::maybe-block-start-location loc)))))
+				"?"))
+	       it))
+	 (or (ignore-errors (sb-debug::code-location-source-form loc 100))
+	     "REPL, unknown location"))))
+#+end_src
+
+* Tests
+
+Mosts tests are simple regexes on the output of running (alpha 4 5). These test functions are in their own file,
+test-functions.lisp, so they have known line numbers.
+
+#+begin_src lisp :tangle "test-functions.lisp"
+  (in-package :backtrace.test)
+  (defvar *fail-p* t)
+  (defun tertiary () ;; Line 4
+    (declare (optimize debug))
+    (if *fail-p* (error "In last") 4))
+  
+  (defun beta (a) ;; Line 8
+    (declare (optimize debug))
+    (* (tertiary) a))
+  
+  (defun alpha (a b) ;; Line 12
+    (declare (optimize debug))
+      (dotimes (i 4) 
+        (incf b (beta a))))
+#+end_src
+
+#+TBLNAME: simpleTests
+|----------------+--------+---------+------------------------+----------------------------------------------------|
+| *test*         | *vars* | *depth* | *regex*                | *notes*                                            |
+|----------------+--------+---------+------------------------+----------------------------------------------------|
+| variables-off  | nil    |       6 | !with                  | When variables are disabled, we shouldn't see any. |
+| variables-on   | t      |       6 | with                   | When enabled, we should see some.                  |
+|----------------+--------+---------+------------------------+----------------------------------------------------|
+| tertiary-first | nil    |       1 | !BETA                  | Tertiary should be first.                          |
+| beta-second    | nil    |       2 | !ALPHA                 | Beta should be second                              |
+| alpha-third    | nil    |       3 | ALPHA                  | Alpha should be last                               |
+|----------------+--------+---------+------------------------+----------------------------------------------------|
+| tertiary-fp    | nil    |       1 | test-functions.lisp@4  | Correct file location for tertiary                 |
+| beta-fp        | nil    |       2 | test-functions.lisp@8  | Correct file location for beta                     |
+| alpha-fp       | nil    |       3 | test-functions.lisp@12 | Correct file location for alpha                    |
+|----------------+--------+---------+------------------------+----------------------------------------------------|
+
+The only other test ensures that our restart is present. 
+
+#+name: ensure-restart-test
+#+begin_src lisp
+  (defun ensure-restart-exists-test ()
+    "Test that the backtrace restart is created."
+    (block nil
+      (handler-bind ((error (lambda (c) (declare (ignore c)) (return (find-restart 'backtrace)))))
+        (test-setup 5 nil))))
+  (pushnew 'ensure-restart-exists-test *all-tests*)
+#+end_src lisp
+
+* License
+
+backtrace is distributed under the [[http://opensource.org/licenses/lgpl-2.1.php][LGPL2]] License. 
+
+* Tangles							   :NOEXPORT:
+** Copyright
+#+name: copyright
+#+begin_src lisp 
+;;; Copyright (c) 2012-2013, Warren Wilkinson.  All rights reserved.
+
+;;; BEGIN_LICENSE:LGPL2
+;;;
+;;; This library is free software: you can redistribute it and/or modify
+;;; it under the terms of the GNU Library General Public License as published by
+;;; the Free Software Foundation; version 2.
+;;;
+;;; This library is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU Library General Public License for more details.
+;;;
+;;; You should have received a copy of the GNU Library General Public License
+;;; along with this library; see the file COPYING.LIB.  If not, write to
+;;; the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+;;; Boston, MA 02110-1301, USA.
+;;;
+;;; END_LICENSE
+#+end_src 
+
+** backtrace.lisp
+#+begin_src lisp :tangle backtrace.lisp :noweb yes 
+  ;;; -*- Mode: LISP; Syntax: COMMON-LISP; Package: BACKTRACE; Base: 10 -*-
+      
+  <<copyright>> 
+    
+  (defpackage :backtrace 
+    (:use :common-lisp)
+    (:export print-variable with-printable-backtrace backtrace))
+    
+  (in-package :backtrace)
+    
+  (defmacro aif (val then else)
+    `(let ((it ,val)) (if it ,then ,else)))
+    
+  <<file-line>>
+  
+  <<source-location>>
+  
+  <<frame-variables>>
+  
+  <<print-backtrace>>
+  
+  <<with-printable-backtrace>>
+  
+#+end_src 
+** test.lisp
+
+#+NAME: result-runner-and-printer
+#+BEGIN_SRC lisp
+  (defvar *all-tests* nil)
+        
+  (defstruct results
+    (tests 0)
+    (failures nil))
+  (defun results-failure-count (results)
+    (length (results-failures results)))
+  (defun results-successes (results)
+    (- (results-tests results)
+       (results-failure-count results)))
+  
+  (defun runtest (fun results)
+    (let* ((success t)
+           (output (with-output-to-string (*standard-output*)
+                     (setf success (funcall fun)))))
+      (make-results
+       :tests (1+ (results-tests results))
+       :failures (if success
+                     (results-failures results)
+                     (acons fun output (results-failures results))))))
+  
+  (defun present-failures (results)
+    (format t "~%BACKTRACE FAILURES:~%")
+    (loop for (fn . problems) in (results-failures results)
+          do (format t "~%~a~a~%" fn problems)))
+  (defun present-results (results)
+    (format t "~%BACKTRACE TEST RESULTS:")
+    (format t "~%     Tests: ~a~%   Success: ~a~%  Failures: ~a" 
+            (results-tests results)
+            (results-successes results)
+            (results-failure-count results))
+    (when (results-failures results)
+      (present-failures results)))
+    
+  (defun run-tests ()
+    (format t "~%RUNNING BACKTRACE TESTS...")
+    (present-results 
+     (reduce #'(lambda (test results) (runtest test results))
+             *all-tests* :from-end t :initial-value (make-results))))     
+#+END_SRC
+
+
+#+NAME: tangle-tests(table=simpleTests)
+#+begin_src emacs-lisp 
+    (defun row-to-test (row)
+      (let ((name (first row))
+            (variables (second row))
+            (depth (third row))
+            (regex (fourth row))
+            (comment (fifth row)))
+        (format "(deftest %14s :vars %3s :depth %2d :regex %24S :comment %S)"
+                name variables depth regex comment)))
+  
+    (mapconcat #'row-to-test (cdr (remove 'hline table)) "\n")
+#+end_src
+
+#+RESULTS: tangle-tests
+: (deftest  variables-off :vars nil :depth  6 :regex                  "!with" :comment "When variables are disabled, we shouldn't see any.")
+: (deftest   variables-on :vars   t :depth  6 :regex                   "with" :comment "When enabled, we should see some.")
+: (deftest tertiary-first :vars nil :depth  1 :regex                  "!BETA" :comment "Tertiary should be first.")
+: (deftest    beta-second :vars nil :depth  2 :regex                 "!ALPHA" :comment "Beta should be second")
+: (deftest    alpha-third :vars nil :depth  3 :regex                  "ALPHA" :comment "Alpha should be second")
+: (deftest    tertiary-fp :vars nil :depth  1 :regex  "test-functions.lisp@4" :comment "Correct file location for tertiary")
+: (deftest        beta-fp :vars nil :depth  2 :regex  "test-functions.lisp@8" :comment "Correct file location for beta")
+: (deftest       alpha-fp :vars nil :depth  3 :regex "test-functions.lisp@12" :comment "Correct file location for alpha")
+
+#+begin_src lisp :tangle test.lisp :noweb yes
+  ;;; -*- Mode: LISP; Syntax: COMMON-LISP; Package: BACKTRACE.TEST; Base: 10 -*-
+  
+  <<copyright>>
+  
+  (defpackage :backtrace.test
+    (:use :common-lisp :backtrace)
+    (:export run-tests))
+  
+  (in-package :backtrace.test)
+
+  <<result-runner-and-printer>>  
+
+  (defun test-setup (depth vars)
+     (with-output-to-string (s)
+        (with-printable-backtrace (s :depth depth :variables vars)
+            (alpha 4 5))))
+   
+  (defun quick-test (depth vars)
+     (handler-bind ((error (lambda (c) (declare (ignore c)) (invoke-restart (find-restart 'backtrace)))))
+       (test-setup depth vars))) ;; Invoke restart
+
+  (defmacro deftest (name &key (vars nil) (depth 6) (regex "") (comment ""))
+    `(progn 
+       (defun ,name ()
+           ,comment 
+           (let ((backtrace (quick-test ,depth ,vars)))
+              (or ,(if (char= #\! (char regex 0))
+                       `(not (cl-ppcre:scan ,(subseq regex 1) backtrace))
+                       `(cl-ppcre:scan ,regex backtrace))
+                  (prog1 nil (format t "Regex ~s did not match backtrace:~%~a" ,regex backtrace)))))
+       (pushnew ',name *all-tests*)))
+
+  ;; Generated tests
+  <<tangle-tests(simpleTests)>>
+
+  <<ensure-restart-test>>
+
+#+end_src
+
+** backtrace.asd
+#+begin_src lisp :tangle backtrace.asd :noweb yes 
+  ;;; -*- Mode: LISP; Syntax: COMMON-LISP;  Base: 10 -*-
+  
+  <<copyright>>
+  
+  (defsystem :backtrace
+    :name "backtrace"
+    :version "1.0.0"
+    :author "Warren Wilkinson <warrenwilkinson@gmail.com>"
+    :license "lgpl2"
+    :description "A library for emitting backtraces."
+    :components ((:file "backtrace"))
+    :in-order-to ((test-op (load-op backtrace.test))))
+  
+  (defsystem :backtrace.test
+    :name "backtrace.test"
+    :version "1.0.0"
+    :author "Warren Wilkinson <warrenwilkinson@gmail.com>"
+    :description "Testing code for the backtrace library"
+    :licence "LGPL2"
+    :depends-on (:backtrace :cl-ppcre)
+    :components ((:file "test")
+                 (:file "test-functions")))
+  
+  (defmethod perform ((op asdf:test-op) (system (eql (find-system :backtrace))))
+    (funcall (intern "RUN-TESTS" :backtrace.test)))
+  
+#+END_SRC
+
+* TODO Stuff To Do						   :NOEXPORT:
+** DONE Make it main source Tanglable
+** DONE Tangle and ASDF load
+** DONE Rewrite the Installation part.
+** DONE Write appropriate copyright header.
+** DONE Grab ASD descriptions from this file.
+** DONE Get Tests working
+** TODO [#B] Get a github account place to put this on.
+https://github.com/WarrenWilkinson/backtrace
+** TODO Publish this as HTML and make it the projects webpage.
+** TODO package and release.
+
+
+
+
